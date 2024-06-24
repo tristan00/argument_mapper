@@ -2,11 +2,11 @@ import json
 import os
 import random
 import time
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Optional
 import pandas as pd
 from gensim.models.phrases import Phrases, Phraser
 from gensim.models.word2vec import LineSentence
-
+import traceback
 from gensim.corpora import Dictionary
 from gensim.matutils import hellinger
 from gensim.models import LdaModel, LdaMulticore
@@ -15,6 +15,7 @@ import numpy as np
 import common
 from dataset_utils import get_source_text_list, get_train_df, get_html_text_list, get_paragraph_text_list, \
     get_comment_chain_text_list
+from param_optimizer_model import general_case
 from text_utils import tokenize_doc
 
 eval_every = None
@@ -35,19 +36,14 @@ def train_lda(
         no_above=0.2,
         phraser_min_count=1,
         phraser_threshold=10,
-        phraser_scorer='default',
-        phraser_threshold_npmi=0.0
+        phraser_scorer='default'
 ):
     start_time = time.time()
 
-    if phraser_scorer == 'default':
-        phrases = Phrases(docs, min_count=phraser_min_count,
+    phrases = Phrases(docs, min_count=phraser_min_count,
                           threshold=phraser_threshold,
                           scoring=phraser_scorer)
-    else:
-        phrases = Phrases(docs, min_count=phraser_min_count,
-                          threshold=phraser_threshold_npmi,
-                          scoring=phraser_scorer)
+
     ngram_phraser = Phraser(phrases)
     docs_with_ngrams = [ngram_phraser[doc] for doc in docs]
 
@@ -160,18 +156,18 @@ def train_lda_on_source_messages(
         phraser_min_count=1,
         phraser_threshold=10,
         phraser_scorer='default',
-        phraser_threshold_npmi=0.0,
-        dataset='post'
+        dataset='post',
+        max_input_jsons=40
 ):
     print(dataset)
     if dataset == 'post':
-        train_docs = get_source_text_list(get_train_df(), min_len=min_len, max_len=max_len)
+        train_docs = get_source_text_list(get_train_df(max_docs=max_input_jsons), min_len=min_len, max_len=max_len)
     elif dataset == 'post_html':
-        train_docs = get_html_text_list(get_train_df(), min_len=min_len, max_len=max_len)
+        train_docs = get_html_text_list(get_train_df(max_docs=max_input_jsons), min_len=min_len, max_len=max_len)
     elif dataset == 'paragraph':
-        train_docs = get_paragraph_text_list(get_train_df(), min_len=min_len, max_len=max_len)
+        train_docs = get_paragraph_text_list(get_train_df(max_docs=max_input_jsons), min_len=min_len, max_len=max_len)
     elif dataset == 'chain':
-        train_docs = get_comment_chain_text_list(get_train_df(), min_len=min_len, max_len=max_len)
+        train_docs = get_comment_chain_text_list(get_train_df(max_docs=max_input_jsons), min_len=min_len, max_len=max_len)
 
 
     else:
@@ -192,7 +188,6 @@ def train_lda_on_source_messages(
         phraser_min_count=phraser_min_count,
         phraser_threshold=phraser_threshold,
         phraser_scorer=phraser_scorer,
-        phraser_threshold_npmi=phraser_threshold_npmi
 
     )
     inputs = dict(
@@ -210,8 +205,8 @@ def train_lda_on_source_messages(
         phraser_min_count=phraser_min_count,
         phraser_threshold=phraser_threshold,
         phraser_scorer=phraser_scorer,
-        phraser_threshold_npmi=phraser_threshold_npmi,
-        dataset=dataset
+        dataset=dataset,
+        max_input_jsons=max_input_jsons
     )
 
     inputs.update(measurements)
@@ -230,56 +225,52 @@ def load_lda_model(
 
 
 def rank_results(path):
-    df = pd.read_csv(path)
+    try:
+        df = pd.read_csv(path)
+    except:
+        print('lda param scoring file not found')
+        return
 
-    # Ascending = False if a lower value should score higher (better)
     # avg_topic_coherence: High values indicate that the words within a topic frequently co-occur in your corpus, suggesting that the topic is meaningful and interpretable.
     # Perplexity: Low values of perplexity indicate a model that predicts the sample well, suggesting better general performance. This means the model is more sure of its topic assignments.
     # Diversity: High values indicate that the model has a wide range of unique words across different topics, which can suggest that the topics are varied and well-separated.
     # Entropy: Low values signify that documents have more definitive topic distributions, with some topics being very dominant, which can indicate clearer topic structure or more focused documents.
     # Stability: High values reflect that the topics are stable across different runs of the model with varying initializations or data subsets, suggesting robustness and reliability of the topic definitions.
 
-    df['coherence_rank'] = df['avg_topic_coherence'].rank(ascending=False)
-    df['perplexity_rank'] = df['perplexity'].rank(ascending=True)
-    df['diversity_rank'] = df['diversity'].rank(ascending=False)
-    df['entropy_rank'] = df['avg_entropy'].rank(ascending=True)
-    df['stability_rank'] = df['stability_score'].rank(ascending=False)
-    df['model_training_time_rank'] = df['model_training_time'].rank(ascending=False)
+    df['coherence_rank'] = df['avg_topic_coherence'].fillna(df['avg_topic_coherence'].min()).rank(ascending=True)
+    df['perplexity_rank'] = df['perplexity'].fillna(df['perplexity'].max()).rank(ascending=False)
+    df['diversity_rank'] = df['diversity'].fillna(df['diversity'].min()).rank(ascending=True)
+    df['entropy_rank'] = df['avg_entropy'].fillna(df['avg_entropy'].max()).rank(ascending=False)
+    df['stability_rank'] = df['stability_score'].fillna(df['stability_score'].min()).rank(ascending=True)
+    df['model_training_time_rank'] = df['model_training_time'].fillna(df['model_training_time'].max()).rank(ascending=False)
 
-    weights = {
-        'coherence_rank': 5,
-        'perplexity_rank': 1,
-        'diversity_rank': 3,
-        'entropy_rank': 2,
-        'stability_rank': 2,
-        'model_training_time_rank': 1
-    }
-
-    df['weighted_score'] = (
-            df['coherence_rank'] * weights['coherence_rank'] +
-            df['perplexity_rank'] * weights['perplexity_rank'] +
-            df['diversity_rank'] * weights['diversity_rank'] +
-            df['entropy_rank'] * weights['entropy_rank'] +
-            df['stability_rank'] * weights['stability_rank']
-    )
-
-    df = df.sort_values('weighted_score')
+    df['total_score'] = (df['coherence_rank']*df['perplexity_rank']*df['diversity_rank']*df['entropy_rank']*df['stability_rank']*df['model_training_time_rank'])
+    df['total_score'] = df['total_score'].rank(ascending=True)
+    df = df.sort_values('total_score')
     return df
 
 
-if __name__ == '__main__':
+def run_training(seed_file: Optional[str], seed_count: Optional[int] = 0):
     rank_results(common.topic_modeling_param_results_save_loc)
-    results = list()
+
     try:
         results = list(pd.read_csv(common.topic_modeling_param_results_save_loc).to_dict(orient='records'))
     except:
-        import traceback
-
+        results = list()
         traceback.print_exc()
-    # results=list()
+
+    if seed_file and seed_count:
+        seed_count_df = pd.read_csv(seed_file)
+        seed_count_df = seed_count_df.iloc[:seed_count]
+        seed_count_df = seed_count_df.drop(['total_score', 'predicted_score'], axis = 1)
+        seed_records = seed_count_df.to_dict(orient = 'records')
+    else:
+        seed_records = list()
 
     for i in range(10000):
-        try:
+        if i < len(seed_records):
+            result = dict(**seed_records[i])
+        else:
             lda_num_topics = random.randint(2, 25)
             chunksize = random.randint(100, 2000)
             passes = random.randint(1, 12)
@@ -291,38 +282,91 @@ if __name__ == '__main__':
             no_above = random.uniform(0.01, 0.99)
             min_len = random.randint(1, 100)
             max_len = random.randint(110, 3000)
+            max_input_jsons = random.randint(20, 200)
 
-            phraser_min_count = random.randint(1, 50)
-            phraser_threshold = random.randint(2, 40)
-            phraser_threshold_npmi = random.uniform(-.999, .999)
+            phraser_min_count = random.randint(1, 100)
+            phraser_threshold = random.randint(-1, 25)
             phraser_scorer = random.choice(['npmi', 'default'])
 
             dataset = random.choice(['post_html', 'post', 'paragraph', 'chain'])
+            result = dict(lda_num_topics=lda_num_topics,
+                    chunksize=chunksize,
+                    passes=passes,
+                    iterations=iterations,
+                    decay=decay,
+                    alpha=alpha_value,
+                    eta=eta_value,
+                    no_below=no_below,
+                    no_above=no_above,
+                    min_len=min_len,
+                    max_len=max_len,
+                    phraser_min_count=phraser_min_count,
+                    phraser_threshold=phraser_threshold,
+                    phraser_scorer=phraser_scorer,
+                    dataset=dataset,
+                    max_input_jsons=max_input_jsons)
+        try:
 
             result = train_lda_on_source_messages(
-                lda_num_topics=lda_num_topics,
-                chunksize=chunksize,
-                passes=passes,
-                iterations=iterations,
-                decay=decay,
-                alpha=alpha_value,
-                eta=eta_value,
-                no_below=no_below,
-                no_above=no_above,
-                min_len=min_len,
-                max_len=max_len,
-                phraser_min_count=phraser_min_count,
-                phraser_threshold=phraser_threshold,
-                phraser_scorer=phraser_scorer,
-                phraser_threshold_npmi=phraser_threshold_npmi,
-                dataset=dataset
+                **result
             )
-            results.append(result)
-            print(result)
-            print( pd.DataFrame.from_dict(results).shape)
-            pd.DataFrame.from_dict(results).to_csv(common.topic_modeling_param_results_save_loc, index=False)
 
         except:
-            import traceback
             traceback.print_exc()
             time.sleep(1)
+
+        results.append(result)
+        print(result)
+        print(pd.DataFrame.from_dict(results).shape)
+        pd.DataFrame.from_dict(results).to_csv(common.topic_modeling_param_results_save_loc, index=False)
+
+
+
+def run_predictive_param_search(set_features: Dict, output_location: str):
+    '''
+    Chatgpt
+
+    Use the features as set int the run_training function and the score defined in rank_results.
+
+    Call the general_case function you just made
+
+    '''
+    score_df = rank_results(common.topic_modeling_param_results_save_loc)
+    score_column = 'total_score'
+
+    parameter_columns = [
+        'lda_num_topics',
+        'chunksize',
+        'passes',
+        'iterations',
+        'decay',
+        'alpha',
+        'eta',
+        'no_below',
+        'no_above',
+        'min_len',
+        'max_len',
+        'phraser_min_count',
+        'phraser_threshold',
+        'phraser_scorer',
+        'dataset',
+        'max_input_jsons'
+    ]
+
+    # Call the general_case function with the appropriate parameters.
+    results_df = general_case(
+        score_df,
+        set_inputs=set_features,
+        score_column=score_column,
+        parameter_columns=parameter_columns,
+        iterations=100000
+    )
+    results_df.to_csv(output_location, index = False)
+
+
+if __name__ == '__main__':
+    set_features = {'dataset':'post', 'max_input_jsons':200}
+    gen_result_location = f'{common.base_dir}/generated_param_results.csv'
+    run_predictive_param_search(set_features=set_features, output_location=gen_result_location)
+    df = pd.read_csv(gen_result_location)
+    run_training(seed_file=gen_result_location, seed_count=2)
