@@ -43,8 +43,9 @@ upvote_regex = r'-?\d+'
 comment_author_selector = "a.author"
 view_source_class_name = "usertext-edit viewSource"
 lda_max_text_length = 5000
-lda_model_loc = "/Users/tristandelforge/PycharmProjects/argument_mapper/lda_model"
-dictionary_loc = "/Users/tristandelforge/PycharmProjects/argument_mapper/dictionary"
-post_link_save_loc = '/Users/tristandelforge/Documents/arguments/posts'
-topic_modeling_param_results_save_loc = '/Users/tristandelforge/Documents/arguments/topic_modeling_param_results.csv'
-
+base_dir = '/Users/tristandelforge/PycharmProjects/argument_mapper'
+lda_model_loc = f"{base_dir}/lda_model"
+dictionary_loc = f"{base_dir}/dictionary"
+post_link_save_loc = f"{base_dir}/posts"
+topic_modeling_param_results_save_loc = f"{base_dir}/topic_modeling_param_results.csv"
+llm_location = f"{base_dir}/llm"

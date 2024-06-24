@@ -342,7 +342,6 @@ def get_source_html_text_df():
 
 
 def main():
-    scrape_posts(post_link_save_loc)
     scrape_post_list(post_link_save_loc)
     scrape_posts(post_link_save_loc)
 

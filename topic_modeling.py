@@ -207,8 +207,8 @@ def train_lda_on_source_messages(
         no_above=no_above,
         min_len=min_len,
         max_len=max_len,
-        phraser_min_count=1,
-        phraser_threshold=10,
+        phraser_min_count=phraser_min_count,
+        phraser_threshold=phraser_threshold,
         phraser_scorer=phraser_scorer,
         phraser_threshold_npmi=phraser_threshold_npmi,
         dataset=dataset
@@ -247,7 +247,7 @@ def rank_results(path):
     df['model_training_time_rank'] = df['model_training_time'].rank(ascending=False)
 
     weights = {
-        'coherence_rank': 3,
+        'coherence_rank': 5,
         'perplexity_rank': 1,
         'diversity_rank': 3,
         'entropy_rank': 2,
@@ -268,7 +268,6 @@ def rank_results(path):
 
 
 if __name__ == '__main__':
-
     rank_results(common.topic_modeling_param_results_save_loc)
     results = list()
     try:
@@ -281,17 +280,17 @@ if __name__ == '__main__':
 
     for i in range(10000):
         try:
-            lda_num_topics = random.randint(2, 50)
+            lda_num_topics = random.randint(2, 25)
             chunksize = random.randint(100, 2000)
-            passes = random.randint(1, 25)
-            iterations = random.randint(1, 1000)
+            passes = random.randint(1, 12)
+            iterations = random.randint(1, 250)
             decay = random.uniform(0.5, 0.99)
             alpha_value = random.choice(['symmetric', 'asymmetric'])
             eta_value = random.choice(['symmetric', 'auto'])
             no_below = random.randint(4, 100)
             no_above = random.uniform(0.01, 0.99)
             min_len = random.randint(1, 100)
-            max_len = random.randint(110, 5000)
+            max_len = random.randint(110, 3000)
 
             phraser_min_count = random.randint(1, 50)
             phraser_threshold = random.randint(2, 40)
@@ -319,6 +318,7 @@ if __name__ == '__main__':
                 dataset=dataset
             )
             results.append(result)
+            print(result)
             print( pd.DataFrame.from_dict(results).shape)
             pd.DataFrame.from_dict(results).to_csv(common.topic_modeling_param_results_save_loc, index=False)
 
