@@ -76,3 +76,35 @@ def transform_html_to_source(html_message):
     transformed_text += '\nhide'
 
     return transformed_text
+
+
+def transform_html_to_paragraphs(html_message):
+    soup = BeautifulSoup(html_message, 'html.parser')
+
+    p_tags = soup.find_all('p')
+    result = []
+    for p in p_tags:
+        # Optionally, remove or handle non-relevant tags
+        for non_relevant in p.find_all(['span', 'div']):  # Add more tags if needed
+            non_relevant.decompose()  # This removes the tag from the tree
+
+        for a in p.find_all('a'):
+            href = a.get('href', '')
+            text = a.get_text(strip=True)
+            if text:  # Only add the markdown link if there is text
+                markdown_link = f"[{text}]({href})"
+                a.replace_with(markdown_link)
+            else:
+                a.decompose()  # Remove <a> tags that don't contribute to visible text
+
+        # Find and replace <em> tags with Markdown italics
+        for em in p.find_all('em'):
+            em_text = em.get_text(strip=True)
+            markdown_em = f"*{em_text}*"
+            em.replace_with(markdown_em)
+
+        inner_text = p.get_text(" ", strip=True)
+        result.append(inner_text)
+
+    transformed_text = [r.strip() for r in result]
+    return transformed_text

@@ -18,7 +18,17 @@ subreddit_list = ['DebateAnAtheist',
                   'China_Debate',
                   'policydebate',
                   'DebateNihilisms',
-                  'DebateMonarchy']
+                  'DebateMonarchy',
+                  'CapitalismVSocialism',
+                  'DebateAMuslim',
+                  'debateAMR',
+                  'DebateAntinatalism',
+                  'DebateJudaism',
+                  'Congressional_Debate',
+                  'DebatePolitics',
+                  'DebateTranshumanism',
+                  'excatholicDebate',
+                  'DebateIt']
 
 no_user = "User deleted or not found"
 
@@ -26,6 +36,8 @@ main_dir = '/Users/tristandelforge/Documents/arguments'
 gecko_path = '/Users/tristandelforge/Documents/arguments/geckodriver'
 addon_path = '/Users/tristandelforge/Documents/arguments/reddit_enhancement_suite-5.24.6.xpi'
 webpage_save_path = '/Users/tristandelforge/Documents/arguments/webpages'
+json_save_path = '/Users/tristandelforge/Documents/arguments/raw_arguments'
+
 upvote_regex = r'-?\d+'
 
 comment_author_selector = "a.author"
@@ -33,3 +45,6 @@ view_source_class_name = "usertext-edit viewSource"
 lda_max_text_length = 5000
 lda_model_loc = "/Users/tristandelforge/PycharmProjects/argument_mapper/lda_model"
 dictionary_loc = "/Users/tristandelforge/PycharmProjects/argument_mapper/dictionary"
+post_link_save_loc = '/Users/tristandelforge/Documents/arguments/posts'
+topic_modeling_param_results_save_loc = '/Users/tristandelforge/Documents/arguments/topic_modeling_param_results.csv'
+

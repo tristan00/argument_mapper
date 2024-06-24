@@ -1,20 +1,14 @@
 import re
 import time
-from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.support.wait import WebDriverWait
 import random
-from pydantic import BaseModel, Field
-from typing import Optional, List
 import json
 import os
-import pandas as pd
-from bs4 import BeautifulSoup
 
 from common import addon_path, gecko_path, upvote_regex, no_user, comment_author_selector, view_source_class_name, \
-    subreddit_list, webpage_save_path
+    subreddit_list, webpage_save_path, post_link_save_loc, json_save_path
 from dataset_utils import get_all_files
 from models import ContentUnit
 
@@ -24,12 +18,20 @@ from models import ContentUnit
 3. Use topic modeling or llms to simplify, split and consolidate graphs into arguments
 '''
 
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
 
 
 def get_driver():
-    service = Service(executable_path=gecko_path)
-    driver = webdriver.Firefox(service=service)
+    gecko_path = "/Users/tristandelforge/Documents/arguments/geckodriver"
 
+    options = Options()
+    options.headless = False
+
+    service = Service(executable_path=gecko_path)
+
+    driver = webdriver.Firefox(service=service, options=options)
     driver.install_addon(addon_path, temporary=True)
     return driver
 
@@ -85,17 +87,25 @@ def extract_comments(post_link, comment_element, parent_id):
         )
 
         # Check for replies
-        child_comments = comment_element.find_elements(By.CSS_SELECTOR, "div.child > div.comment")
-        for child_comment in child_comments:
-            reply_unit = extract_comments(child_comment, comment_id)
-            if reply_unit:
-                comment_unit.add_reply(reply_unit)
+
+        comment_id_replaced = comment_id.replace('t1_', '')
+
+        parent_divs = comment_element.find_elements(By.CSS_SELECTOR, f"div[id='siteTable_t1_{comment_id_replaced}']")
+        if parent_divs:
+            child_comments = parent_divs[0].find_elements(By.XPATH, "./div[@data-type='comment']")
+            for child_comment in child_comments:
+                reply_unit = extract_comments(post_link, child_comment, comment_id)
+                if reply_unit:
+                    comment_unit.add_reply(reply_unit)
 
         return comment_unit
 
 
 def scrape_comments_from_url(driver, post_link, post_id):
-    top_level_comments = driver.find_elements(By.CSS_SELECTOR, "div.comment")
+    parent_div = driver.find_element(By.CSS_SELECTOR, "div[id^='siteTable_t3_']")
+    top_level_comments = parent_div.find_elements(By.XPATH, "./div[@data-type='comment']")
+
+    # top_level_comments = driver.find_elements(By.CSS_SELECTOR, "div.comment")
     comments = []
     for top_comment in top_level_comments:
         comment_unit = extract_comments(post_link, top_comment, post_id)
@@ -104,10 +114,13 @@ def scrape_comments_from_url(driver, post_link, post_id):
 
 
 def scrape_post(post_link, driver, save_directory, web_save_directory):
+    import datetime
+
+    print(f"Starting link: {post_link}, {datetime.datetime.now().isoformat()}")
     post_id = post_link.split('/')[-3]  # Extracting the post ID from the URL
     file_path = os.path.join(save_directory, f'{post_id}.json')
     webpage_path = os.path.join(web_save_directory, f'{post_id}.html')
-    # Check if the file already exists
+
     if os.path.exists(file_path) and not os.path.exists(webpage_path):
         print(f"File for post ID {post_id} already exists. Skipping.")
         return
@@ -116,16 +129,8 @@ def scrape_post(post_link, driver, save_directory, web_save_directory):
         driver.get(f"file://{webpage_path}")
         print(f'loaded page from cache: {post_link}')
     else:
-        driver.get(post_link)
-        time.sleep(5)
-
-        try:
-            show_comments_link = driver.find_element(By.CSS_SELECTOR, "a.title-button")
-            if "show all" in show_comments_link.text:
-                show_comments_link.click()
-                time.sleep(15)  # Wait for comments to load
-        except Exception as e:
-            print("No 'show all comments' link found or error clicking it:", e)
+        driver.get(f'{post_link}?limit=500')
+        time.sleep(10)
 
         source_links = driver.find_elements(By.CSS_SELECTOR, "a.noCtrlF[data-text='source']")
         try:
@@ -138,7 +143,6 @@ def scrape_post(post_link, driver, save_directory, web_save_directory):
         with open(webpage_path, 'w') as f:
             f.write(driver.page_source)
 
-    # Get post details
     post_title = driver.find_element(By.CSS_SELECTOR, "a.title").text
     post_author_element = driver.find_element(By.CSS_SELECTOR, ".tagline a.author")
     post_author = post_author_element.text if post_author_element else no_user
@@ -228,7 +232,8 @@ def scrape_post(post_link, driver, save_directory, web_save_directory):
 
 
 def scrape_reddit(post_link_save_loc: str,
-                  subreddit_list: list):
+                  subreddit_list: list,
+                  max_results_to_add: int = 10):
     try:
         with open(post_link_save_loc, 'r') as f:
             url_dict = json.load(f)
@@ -249,21 +254,36 @@ def scrape_reddit(post_link_save_loc: str,
     for s in subreddit_list:
         urls.append(f'https://old.reddit.com/r/{s}/controversial/?sort=top&t=all')
 
+    urls = list(set(urls))
     random.shuffle(urls)
+    urls = urls[:max_results_to_add]
 
     for i in urls:
-        driver.get(i)
+        try:
+            print(i, len(url_dict))
+            driver.get(i)
 
-        element = WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located((By.ID, "siteTable"))
-        )
+            element = WebDriverWait(driver, 10).until(
+                EC.visibility_of_element_located((By.ID, "siteTable"))
+            )
+            time.sleep(10)
+            print()
+
+            links = [link.get_attribute('href') for link in element.find_elements(By.TAG_NAME, "a") if
+                     link.get_attribute('href') and
+                     'comments' in link.get_attribute('href') and 'comments' in link.text and 'Can' not in link.text and
+                     int(link.text.split()[0].replace(',', '')) >= 50]
+            comments_dict = {link.split('/')[-3]: link for link in links if link}
+            url_dict.update(comments_dict)
+            with open(post_link_save_loc, 'w') as f:
+                json.dump(url_dict, f)
+            print('success', i)
+        except:
+            import traceback
+            traceback.print_exc()
+            print('failure', i)
+            time.sleep(10)
         time.sleep(10)
-        links = [link.get_attribute('href') for link in element.find_elements(By.TAG_NAME, "a") if
-                 'comments' in link.get_attribute('href')]
-        comments_dict = {link.split('/')[-3]: link for link in links if link}
-        url_dict.update(comments_dict)
-        with open(post_link_save_loc, 'w') as f:
-            json.dump(url_dict, f)
 
     driver.quit()
 
@@ -286,13 +306,15 @@ def scrape_posts(post_link_save_loc, cached_only=False):
             post_id = post_id.replace('t1_', '')
             webpage_path = os.path.join(webpage_save_path, f'{post_id}.html')
             if os.path.exists(webpage_path) or not cached_only:
-                scrape_post(post_link, driver, gecko_path, webpage_save_path)
+                scrape_post(post_link,
+                            driver,
+                            json_save_path,
+                            webpage_save_path)
         except:
             import traceback
             traceback.print_exc()
         if not cached_only:
             time.sleep(random.randint(2, 5))
-
 
 
 def show_trailing_whitespace(text):
@@ -320,7 +342,8 @@ def get_source_html_text_df():
 
 
 def main():
-    post_link_save_loc = '/Users/tristandelforge/Documents/arguments/posts'
+    scrape_posts(post_link_save_loc)
+    scrape_post_list(post_link_save_loc)
     scrape_posts(post_link_save_loc)
 
 
