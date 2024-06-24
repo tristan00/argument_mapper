@@ -15,6 +15,8 @@ from bs4 import BeautifulSoup
 
 from common import addon_path, gecko_path, upvote_regex, no_user, comment_author_selector, view_source_class_name, \
     subreddit_list, webpage_save_path
+from dataset_utils import get_all_files
+from models import ContentUnit
 
 '''
 1. scrape debate subreddits, debate transcripts....
@@ -22,35 +24,6 @@ from common import addon_path, gecko_path, upvote_regex, no_user, comment_author
 3. Use topic modeling or llms to simplify, split and consolidate graphs into arguments
 '''
 
-
-
-class ContentUnit(BaseModel):
-    url: str = Field(..., description="URL")
-    source_text: Optional[str] = Field(None, description="source")
-    subreddit: Optional[str] = Field(None, description="subreddit")
-    author_tag: Optional[str] = Field(None, description="tag")
-    tag: Optional[str] = Field(None, description="tag")
-    user: Optional[str] = Field(None, description="Username of the author; can be None if deleted or not found")
-    text: str = Field(..., description="Text content of the post or comment")
-    date: str = Field(..., description="Publication date of the post or comment")
-    upvotes: Optional[int] = Field(None, description="Number of upvotes as a string")
-    id: str = Field(..., description="Unique identifier of the post or comment")
-    parent_id: Optional[str] = Field(None,
-                                     description="Parent identifier for comments; for top-level comments, this is the post ID")
-    is_post: bool = Field(..., description="Indicator if the instance is a post (True) or a comment (False)")
-    title: Optional[str] = Field(None, description="Post title")
-    replies: List['ContentUnit'] = Field(list(),
-                                         description="List of replies if the instance is a comment")
-
-    class Config:
-        arbitrary_types_allowed = True
-        json_encoders = {
-            'ContentUnit': lambda v: v.dict(),
-        }
-        from_attributes = True
-
-    def add_reply(self, reply: 'ContentUnit'):
-        self.replies.append(reply)
 
 
 def get_driver():
@@ -320,93 +293,6 @@ def scrape_posts(post_link_save_loc, cached_only=False):
         if not cached_only:
             time.sleep(random.randint(2, 5))
 
-
-def content_unit_to_dict(content_unit, parent_id=None):
-    exclude_keys = {'replies'}  # Add keys you want to exclude here
-    data = vars(content_unit)
-
-    data = {k: v for k, v in data.items() if k not in exclude_keys}
-
-    rows = [data]
-    for reply in content_unit.replies:
-        rows.extend(content_unit_to_dict(reply, parent_id=content_unit.id))
-    return rows
-
-
-def load_json_to_dataframe(json_file_path: str) -> pd.DataFrame:
-    with open(json_file_path, 'r') as f:
-        content_data = json.load(f)
-
-    if 'replies' in content_data and content_data['replies'] is not None:
-        content_data['replies'] = [reply for reply in content_data['replies'] if reply is not None]
-
-    content_unit = ContentUnit(**content_data)
-    rows = content_unit_to_dict(content_unit)
-    df = pd.DataFrame(rows)
-    return df
-
-
-def find_all_json_files(directory: str) -> List[str]:
-    json_files = []
-    for root, dirs, files in os.walk(directory):
-        for file in files:
-            if file.endswith(".json"):
-                json_files.append(os.path.join(root, file))
-    return json_files
-
-
-def get_all_files():
-    saved_files = find_all_json_files('/Users/tristandelforge/Documents/arguments/raw_arguments')
-    dfs = [load_json_to_dataframe(i) for i in saved_files]
-    df = pd.concat(dfs)
-    return df
-
-
-def text_preprocessing(text):
-    modified_text = text.strip()
-    modified_text = re.sub(r'\s*hide$', '', modified_text)
-    modified_text = re.sub(r'\s*hide,$', '', modified_text)
-    modified_text = re.sub(r'\s*HIDE$', '', modified_text)
-    modified_text = re.sub(r'\s*HIDE,$', '', modified_text)
-
-    modified_text = modified_text.replace('\n\n', '\n')
-    modified_text = modified_text.replace(' .\n', '.\n')
-    return modified_text
-
-
-def transform_html_to_source(html_message):
-    soup = BeautifulSoup(html_message, 'html.parser')
-
-    p_tags = soup.find_all('p')
-    result = []
-    for p in p_tags:
-        # Optionally, remove or handle non-relevant tags
-        for non_relevant in p.find_all(['span', 'div']):  # Add more tags if needed
-            non_relevant.decompose()  # This removes the tag from the tree
-
-        for a in p.find_all('a'):
-            href = a.get('href', '')
-            text = a.get_text(strip=True)
-            if text:  # Only add the markdown link if there is text
-                markdown_link = f"[{text}]({href})"
-                a.replace_with(markdown_link)
-            else:
-                a.decompose()  # Remove <a> tags that don't contribute to visible text
-
-        # Find and replace <em> tags with Markdown italics
-        for em in p.find_all('em'):
-            em_text = em.get_text(strip=True)
-            markdown_em = f"*{em_text}*"
-            em.replace_with(markdown_em)
-
-        inner_text = p.get_text(" ", strip=True)
-        result.append(inner_text)
-
-    transformed_text = '\n'.join(result).strip()
-
-    transformed_text += '\nhide'
-
-    return transformed_text
 
 
 def show_trailing_whitespace(text):
