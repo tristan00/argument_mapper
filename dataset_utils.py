@@ -4,6 +4,7 @@ import random
 from typing import List
 import pandas as pd
 
+from common import generate_chain_aware_df_file_loc
 from models import ContentUnit
 from text_utils import transform_html_to_source, transform_html_to_paragraphs
 
@@ -92,7 +93,6 @@ def get_source_text_list(df: pd.DataFrame, min_len = 50, max_len=1000):
 
 
 def get_comment_chain_text_list(df: pd.DataFrame, min_len = 50, max_len=1000):
-    df = analyze_comment_chains(df)
     chains = build_comment_chains(df)
 
     chains2 = list()
@@ -111,60 +111,16 @@ def get_comment_chain_text_list(df: pd.DataFrame, min_len = 50, max_len=1000):
     return chains2
 
 
-def analyze_comment_chains(df):
+def build_comment_chains(df):
     children_dict = df.groupby('parent_id')['id'].apply(list).to_dict()
 
     def get_children_ids(post_id):
         return children_dict.get(post_id, [])
 
-    # def check_deleted(post_id):
-    #     current_id = post_id
-    #     while True:
-    #         current_text = df.loc[df['id'] == current_id, 'text'].values[0]
-    #         if "[deleted]" in current_text:
-    #             return True
-    #         if df.loc[df['id'] == current_id, 'is_post'].values[0]:
-    #             break  # Stop if we reach the root post
-    #         current_id = df.loc[df['id'] == current_id, 'parent_id'].values[0]
-    #     return False
-
-    # Initialize new columns
     df['children_ids'] = df['id'].apply(get_children_ids)
     df['child_count'] = df['children_ids'].apply(len)
-    # df['deleted_conversation'] = df['id'].apply(check_deleted)
-
-    # Calculate depth and maximum depth of the conversation chain
-
-    # def get_depth(post_id):
-    #     if df.loc[df['id'] == post_id, 'is_post'].values[0]:
-    #         return 0
-    #     else:
-    #         parent_id = df.loc[df['id'] == post_id, 'parent_id'].values[0]
-    #         return 1 + get_depth(parent_id)
-    #
-    # def max_depth_of_the_conversation_chain(post_id):
-    #     # Base case: if no children, the max depth from this node is just its own depth
-    #     if post_id not in children_dict or not children_dict[post_id]:
-    #         # Directly return the depth of this node since it has no children
-    #         return df.loc[df['id'] == post_id, 'depth_in_conversation_chain'].values[0]
-    #
-    #     # Recursive case: find the maximum depth among all children
-    #     max_depth = 0
-    #     for child_id in children_dict[post_id]:
-    #         # Calculate the depth of each child relative to this node
-    #         child_depth = max_depth_of_the_conversation_chain(child_id)
-    #         # Compare it to the current max depth, keep the maximum
-    #         max_depth = max(max_depth, child_depth)
-    #
-    #     return max_depth
-    #
-    # df['depth_in_conversation_chain'] = df['id'].apply(lambda x: get_depth(x))
-    # df['max_depth_of_the_conversation_chain'] = df['id'].apply(lambda x: max_depth_of_the_conversation_chain(x))
-    return df
 
 
-def build_comment_chains(df):
-    # Identify leaf nodes as those without children
     leaf_node_ids = df[df['children_ids'].apply(len) == 0]['id']
 
     def get_chain(node_id):
@@ -185,13 +141,46 @@ def build_comment_chains(df):
     return all_chains
 
 
+def generate_chain_aware_df():
+    chains = build_comment_chains(get_train_df())
+
+    chain_aware_dfs = list()
+    for c in chains:
+        chain_id = c[-1]['id']
+        chain_df = pd.DataFrame.from_dict(c)
+        chain_df['chain_id'] = chain_id
+        chain_df['chain_rank'] = chain_df.index.copy()
+        chain_aware_dfs.append(chain_df)
+
+    chain_aware_df = pd.concat(chain_aware_dfs)
+    chain_aware_df.to_csv(generate_chain_aware_df_file_loc, index = False)
+
+
+def get_a_common_chain_df_to_llm_input_by_chain_id(df,
+                                                   chain_id,
+                                                   content_id):
+    c_df = df[df['chain_id'] == chain_id]
+    chain_rank = c_df[c_df['id'] == content_id].iloc[0]['chain_rank']
+    c_df = c_df[c_df['chain_rank'] <= chain_rank]
+
+    output_text = f'Post by {c_df.iloc[0]["user"]}, title: {c_df.iloc[0]["title"]}, initial comment: {transform_html_to_source(c_df.iloc[0]["text"])} \n'
+
+    for idx, row in c_df.iloc[1:].iterrows():
+        output_text+= f'Responded to by {row["user"]}, comment: {transform_html_to_source(row["text"])} \n'
+
+    return output_text
 
 
 if __name__ == '__main__':
-    # df = get_train_df(max_docs = 50)
-    # df2 = analyze_comment_chains(df)
-    # chains = build_comment_chains(df)
-    # chains
-
-    a = get_comment_chain_text_list(get_train_df(max_docs = 50))
-    a
+    df = fill_in_common_chain_df_with_llm_input()
+    df
+    # generate_chain_aware_df()
+    # generate_chain_aware_df()
+    # # df = get_train_df(max_docs = 50)
+    # # df2 = analyze_comment_chains(df)
+    # # chains = build_comment_chains(df)
+    # # chains
+    #
+    # a = get_comment_chain_text_list(get_train_df(max_docs = 50))
+    # a
+    #

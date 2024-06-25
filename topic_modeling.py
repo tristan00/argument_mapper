@@ -285,7 +285,7 @@ def run_training(seed_file: Optional[str], seed_count: Optional[int] = 0):
             max_input_jsons = random.randint(20, 200)
 
             phraser_min_count = random.randint(1, 100)
-            phraser_threshold = random.randint(-1, 25)
+            phraser_threshold = random.randint(-1, 3)
             phraser_scorer = random.choice(['npmi', 'default'])
 
             dataset = random.choice(['post_html', 'post', 'paragraph', 'chain'])
@@ -359,7 +359,7 @@ def run_predictive_param_search(set_features: Dict, output_location: str):
         set_inputs=set_features,
         score_column=score_column,
         parameter_columns=parameter_columns,
-        iterations=100000
+        iterations=10000
     )
     results_df.to_csv(output_location, index = False)
 
@@ -367,6 +367,6 @@ def run_predictive_param_search(set_features: Dict, output_location: str):
 if __name__ == '__main__':
     set_features = {'dataset':'post', 'max_input_jsons':200}
     gen_result_location = f'{common.base_dir}/generated_param_results.csv'
-    run_predictive_param_search(set_features=set_features, output_location=gen_result_location)
+    # run_predictive_param_search(set_features=set_features, output_location=gen_result_location)
     df = pd.read_csv(gen_result_location)
-    run_training(seed_file=gen_result_location, seed_count=2)
+    run_training(seed_file=None, seed_count=1)

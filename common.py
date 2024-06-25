@@ -49,3 +49,12 @@ dictionary_loc = f"{base_dir}/dictionary"
 post_link_save_loc = f"{base_dir}/posts"
 topic_modeling_param_results_save_loc = f"{base_dir}/topic_modeling_param_results.csv"
 llm_location = f"{base_dir}/llm"
+generate_chain_aware_df_file_loc = f"{base_dir}/generate_chain_aware_df.csv"
+
+# llm_model_id = "meta-llama/Meta-Llama-3-8B" # too big for laptop
+# llm_model_id =  "meta-llama/Llama-2-7b-hf"
+# llm_model_id =  "Qwen/Qwen2-7B-Instruct"
+llm_model_id =  "Qwen/Qwen2-1.5B-Instruct"
+
+
+
