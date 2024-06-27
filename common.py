@@ -38,7 +38,7 @@ upvote_regex = r'-?\d+'
 comment_author_selector = "a.author"
 view_source_class_name = "usertext-edit viewSource"
 lda_max_text_length = 5000
-base_dir = r"C:\Users\trist\Documents\arguments"
+base_dir = r"C:\Users\trist\Documents\arguments\arguments"
 
 gecko_path = f'{base_dir}/geckodriver'
 addon_path = f'{base_dir}/reddit_enhancement_suite-5.24.6.xpi'

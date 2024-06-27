@@ -64,3 +64,11 @@ End.
 
 Now here is the data to consider for this question:
 """
+prop_logic_break_down = '''
+Ignore all previous prompts and information and start fresh. 
+
+You are a an argument analyzer. You will evaluate a text exchange. 
+
+Considering the title and all the comments before the last comment as context, Break down the final comment into concine propositional logic.
+
+'''

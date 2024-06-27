@@ -4,7 +4,7 @@ from transformers import logging
 import pandas as pd
 from common import llm_model_id, generate_chain_aware_df_file_loc
 from dataset_utils import get_a_common_chain_df_to_llm_input_by_chain_id
-from llm_prompts import p1
+from llm_prompts import p1, prop_logic_break_down
 
 logging.set_verbosity_debug()
 
@@ -23,7 +23,7 @@ def fill_in_common_chain_df_with_llm_output():
 
     for idx, row in df.iterrows():
         gpt_input = get_a_common_chain_df_to_llm_input_by_chain_id(df, row['chain_id'], row['id'])
-        input_text = f'f{p1} \n {gpt_input}'
+        input_text = f'f{prop_logic_break_down} \n {gpt_input}'
         import time
         start_time = time.time()
         output = llm_pipeline(input_text)
